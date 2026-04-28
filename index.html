@@ -2,367 +2,315 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<title>Steal a Brainrot - Daha İyi Versiyon</title>
+<title>Steal a Brainrot - 6 Base Edition</title>
 <style>
     body { margin:0; overflow:hidden; background:#000; font-family:Arial; }
     #ui {
-        position: absolute; top: 10px; left: 10px; color: white; z-index: 100;
-        background: rgba(0,0,0,0.6); padding: 12px; border-radius: 10px; border: 2px solid #ff00ff;
+        position: absolute; top: 10px; left: 10px; color: #0f0; z-index: 100;
+        background: rgba(0,0,0,0.5); padding: 10px; border-radius: 8px; font-size: 20px;
     }
-    #money { font-size: 26px; color: #00ff88; font-weight: bold; }
-    button {
-        margin: 6px 4px; padding: 10px 18px; font-size: 17px;
-        background: #ff00ff; color: white; border: none; border-radius: 8px; cursor: pointer;
-    }
-    button:hover { background: #ff44ff; }
     #instructions {
-        position: absolute; bottom: 15px; left: 15px; color: #aaa; font-size: 14px;
+        position: absolute; bottom: 15px; left: 15px; color: #bbb; z-index: 100;
     }
 </style>
 </head>
 <body>
-<div id="ui">
-    <div id="money">Para: <span id="moneyAmount">800</span> $</div>
-    <button id="buyBtn">Brainrot Satın Al (100$)</button>
-    <button id="lockBtn">Base'i Kilitle (30s)</button>
-    <div>Brainrot: <span id="brainCount">0</span></div>
-</div>
+<div id="ui">Para: <span id="money">1200</span>$ &nbsp;&nbsp; Brainrot: <span id="count">0</span></div>
 <div id="instructions">
-    Sol Tıkla → Fareyi Kilitle (ekranı döndür)<br>
-    WASD → Hareket | SPACE → Sopayla Vur<br>
-    Brainrot'ları topla, AI'larınkini çal!
+    Sol Tık → Fare Kilitle (döndür)<br>
+    WASD → Hareket | SPACE → Vur | E → Base'ini Kilitle (30s)
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/controls/PointerLockControls.js"></script>
 
 <script>
-// ====================== DEĞİŞKENLER ======================
+// ====================== AYARLAR ======================
 let scene, camera, renderer, controls;
-let playerBody, bat;
-let money = 800;
+let player, bat;
+let money = 1200;
+let ownedBrainrots = 0;
 let brainrots = [];
 let aiBots = [];
+let bases = [];
 let baseLocked = false;
-let velocity = new THREE.Vector3();
-let direction = new THREE.Vector3();
-let move = { forward: false, backward: false, left: false, right: false };
+let lockEndTime = 0;
 
-const brainrotTypes = [
-    {name: "Skibidi Rizzler", color: 0xff00ff, value: 35},
-    {name: "Ohio Sigma", color: 0x00ffff, value: 55},
-    {name: "Tralalero Tralala", color: 0xffff00, value: 22},
-    {name: "Fanum Tax", color: 0xff8800, value: 30}
+const brainrotNames = [
+    "Skibidi Rizzler","Ohio Sigma","Tralalero Tralala","Fanum Tax","Gyatt Mewing","Sigma Male","Rizz God","Skibidi Toilet",
+    "Bussin Ohio","Alpha Wolf","Gooning Edge","Mewing Master","Level 10 Gyatt","Fanum Taxing","Looksmaxxing","Beta Cuck",
+    "Aesthetic Sigma","Brainrot King","Tralala Sigma","Ohio Final Boss","Rizzler 3000","Skibidi Sigma","Gegagedigedago",
+    "Pipe Worm","Chimpanzini Bananini","Lirili Larilla","Bombardiro Crocodilo","Frigo Camelo","Spirita Cappuccina",
+    // Daha fazla ekleyebiliriz, şu an 30+ var, kod içinde rastgele kombinasyon yapacak
 ];
 
-// ====================== BAŞLAT ======================
+function getRandomBrainrot() {
+    const name = brainrotNames[Math.floor(Math.random() * brainrotNames.length)];
+    const hue = Math.random() * 360;
+    return {
+        name: name,
+        color: new THREE.Color(`hsl(${hue}, 100%, 60%)`),
+        value: Math.floor(Math.random() * 60) + 15
+    };
+}
+
+// ====================== INIT ======================
 function init() {
     scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0x220022, 30, 150);
+    scene.fog = new THREE.Fog(0x110022, 40, 180);
 
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
-
-    renderer = new THREE.WebGLRenderer({ antialias: true });
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 300);
+    renderer = new THREE.WebGLRenderer({antialias:true});
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
     document.body.appendChild(renderer.domElement);
 
-    // Işık
-    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
-    dirLight.position.set(30, 50, 20);
-    dirLight.castShadow = true;
-    scene.add(dirLight);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    const sun = new THREE.DirectionalLight(0xffeecc, 1);
+    sun.position.set(50, 80, 30);
+    scene.add(sun);
 
-    // Zemin
+    // Büyük zemin
     const ground = new THREE.Mesh(
-        new THREE.PlaneGeometry(100, 100),
-        new THREE.MeshLambertMaterial({ color: 0x224422 })
+        new THREE.PlaneGeometry(200, 200),
+        new THREE.MeshLambertMaterial({color: 0x113311})
     );
-    ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
+    ground.rotation.x = -Math.PI/2;
     scene.add(ground);
 
     createPlayer();
-    createBase();
+    create6Bases();
+    createCentralConveyor();
 
-    // Pointer Lock Controls
     controls = new THREE.PointerLockControls(camera, document.body);
+    document.addEventListener('click', () => controls.lock());
 
-    document.addEventListener('click', () => {
-        if (!controls.isLocked) controls.lock();
-    });
-
-    // Klavye
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('keyup', onKeyUp);
 
-    document.getElementById('buyBtn').addEventListener('click', buyBrainrot);
-    document.getElementById('lockBtn').addEventListener('click', toggleLock);
+    spawnAIBots(6);
+    spawnBrainrotLoop();
 
-    spawnBrainrots(8);
-    spawnAIBots(5);
-
-    window.addEventListener('resize', onResize);
     animate();
 }
 
 // ====================== OYUNCU ======================
 function createPlayer() {
-    playerBody = new THREE.Group();
-
-    // Vücut
-    const body = new THREE.Mesh(
-        new THREE.BoxGeometry(1.4, 2.2, 1),
-        new THREE.MeshLambertMaterial({color: 0x3366ff})
-    );
+    player = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.5, 1), new THREE.MeshLambertMaterial({color: 0x4488ff}));
     body.position.y = 2;
-    body.castShadow = true;
-    playerBody.add(body);
+    player.add(body);
 
-    // Kafa
-    const head = new THREE.Mesh(
-        new THREE.SphereGeometry(0.75, 20, 20),
-        new THREE.MeshLambertMaterial({color: 0xffddbb})
-    );
-    head.position.set(0, 3.7, 0);
-    head.castShadow = true;
-    playerBody.add(head);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.8, 20, 20), new THREE.MeshLambertMaterial({color: 0xffddaa}));
+    head.position.y = 4;
+    player.add(head);
 
-    playerBody.position.set(0, 0, 10);
-    scene.add(playerBody);
+    player.position.set(0, 0, 20);
+    scene.add(player);
 
-    // Sopayı ekle
-    bat = new THREE.Mesh(
-        new THREE.BoxGeometry(0.25, 0.25, 4),
-        new THREE.MeshLambertMaterial({color: 0x8B4513})
-    );
-    bat.position.set(1.8, 2.5, 0);
-    bat.rotation.set(0, 0, 1.2);
-    playerBody.add(bat);
+    bat = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 4), new THREE.MeshLambertMaterial({color: 0x8B4513}));
+    bat.position.set(2, 2.5, 0);
+    bat.rotation.z = 1;
+    player.add(bat);
 }
 
-function createBase() {
-    const mat = new THREE.MeshLambertMaterial({color: 0x555577});
-    
-    // Arka duvar (kendi base'in)
-    const backWall = new THREE.Mesh(new THREE.BoxGeometry(30, 8, 2), mat);
-    backWall.position.set(0, 4, -20);
-    scene.add(backWall);
+// ====================== 6 BASE ======================
+function create6Bases() {
+    const positions = [
+        {x: -40, z: -40}, {x: 40, z: -40},
+        {x: -40, z: 0},   {x: 40, z: 0},
+        {x: -40, z: 40},  {x: 40, z: 40}
+    ];
+    const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff];
 
-    // Sol ve Sağ duvar
-    const sideMat = new THREE.MeshLambertMaterial({color: 0x444466});
-    const leftWall = new THREE.Mesh(new THREE.BoxGeometry(2, 8, 40), sideMat);
-    leftWall.position.set(-15, 4, -10);
-    scene.add(leftWall);
+    positions.forEach((pos, i) => {
+        const baseGroup = new THREE.Group();
 
-    const rightWall = leftWall.clone();
-    rightWall.position.x = 15;
-    scene.add(rightWall);
-}
-
-// ====================== BRAINROT ======================
-function createBrainrot(type) {
-    const group = new THREE.Group();
-    const body = new THREE.Mesh(
-        new THREE.SphereGeometry(1.2, 24, 24),
-        new THREE.MeshLambertMaterial({color: type.color})
-    );
-    group.add(body);
-
-    // Gözler
-    const eyeMat = new THREE.MeshLambertMaterial({color: 0x000000});
-    const eye1 = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 12), eyeMat);
-    eye1.position.set(-0.45, 0.5, 0.9);
-    group.add(eye1);
-    const eye2 = eye1.clone();
-    eye2.position.x = 0.45;
-    group.add(eye2);
-
-    group.userData = { type, value: type.value, owner: "player" };
-    return group;
-}
-
-function spawnBrainrots(count) {
-    for (let i = 0; i < count; i++) {
-        const type = brainrotTypes[Math.floor(Math.random() * brainrotTypes.length)];
-        const br = createBrainrot(type);
-        br.position.set(
-            (Math.random() - 0.5) * 50,
-            1.2,
-            (Math.random() - 0.5) * 30 - 5
+        // Zemin platformu
+        const platform = new THREE.Mesh(
+            new THREE.PlaneGeometry(25, 25),
+            new THREE.MeshLambertMaterial({color: colors[i]})
         );
+        platform.rotation.x = -Math.PI/2;
+        platform.position.set(pos.x, 0.1, pos.z);
+        baseGroup.add(platform);
+
+        // Duvarlar
+        const wallMat = new THREE.MeshLambertMaterial({color: 0x555555});
+        const wall1 = new THREE.Mesh(new THREE.BoxGeometry(25, 6, 1), wallMat);
+        wall1.position.set(pos.x, 3, pos.z - 12);
+        baseGroup.add(wall1);
+
+        const wall2 = wall1.clone();
+        wall2.rotation.y = Math.PI / 2;
+        wall2.position.set(pos.x - 12, 3, pos.z);
+        baseGroup.add(wall2);
+
+        scene.add(baseGroup);
+        bases.push({group: baseGroup, pos: new THREE.Vector3(pos.x, 0, pos.z), owner: i === 0 ? "player" : "ai", locked: false});
+    });
+}
+
+// ====================== ORTADAKİ CONVEYOR (Yürüyen Brainrotlar) ======================
+function createCentralConveyor() {
+    const conveyor = new THREE.Mesh(
+        new THREE.BoxGeometry(80, 1, 8),
+        new THREE.MeshLambertMaterial({color: 0x333333})
+    );
+    conveyor.position.set(0, 0.5, 0);
+    scene.add(conveyor);
+}
+
+function spawnBrainrotLoop() {
+    setInterval(() => {
+        if (brainrots.length > 80) return; // fazla kalabalık olmasın
+
+        const type = getRandomBrainrot();
+        const br = new THREE.Mesh(
+            new THREE.SphereGeometry(1.3, 20, 20),
+            new THREE.MeshLambertMaterial({color: type.color})
+        );
+
+        br.position.set(
+            (Math.random() - 0.5) * 60,
+            1.5,
+            -60 + Math.random() * 10   // arkadan öne doğru yürüyormuş gibi
+        );
+
+        br.userData = {type, value: type.value, owner: "neutral", speed: 0.08 + Math.random()*0.06};
         scene.add(br);
         brainrots.push(br);
-    }
-}
-
-function buyBrainrot() {
-    if (money < 100) { alert("Yeterli paran yok!"); return; }
-    money -= 100;
-    updateUI();
-
-    const type = brainrotTypes[Math.floor(Math.random() * brainrotTypes.length)];
-    const br = createBrainrot(type);
-    br.position.copy(playerBody.position);
-    br.position.x += (Math.random()-0.5)*6;
-    br.position.z += 6;
-    scene.add(br);
-    brainrots.push(br);
+    }, 600);
 }
 
 // ====================== AI BOTLAR ======================
 function spawnAIBots(count) {
     for (let i = 0; i < count; i++) {
         const bot = new THREE.Group();
-
-        const body = new THREE.Mesh(
-            new THREE.BoxGeometry(1.4, 2.2, 1),
-            new THREE.MeshLambertMaterial({color: 0xff4444})
-        );
+        const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.5, 1), new THREE.MeshLambertMaterial({color: 0xff4444}));
         body.position.y = 2;
         bot.add(body);
 
-        const head = new THREE.Mesh(
-            new THREE.SphereGeometry(0.75, 20, 20),
-            new THREE.MeshLambertMaterial({color: 0xffddbb})
-        );
-        head.position.y = 3.7;
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.8, 20, 20), new THREE.MeshLambertMaterial({color: 0xffddaa}));
+        head.position.y = 4;
         bot.add(head);
 
-        bot.position.set(
-            (Math.random()-0.5)*40,
-            0,
-            (Math.random()-0.5)*35 - 10
-        );
-        bot.userData = { speed: 0.15, target: null };
+        bot.position.set((Math.random()-0.5)*70, 0, (Math.random()-0.5)*70);
+        bot.userData = {speed: 0.12, targetBrain: null, homeBase: i+1};
         scene.add(bot);
         aiBots.push(bot);
     }
 }
 
-// ====================== KİLİTLEME ======================
-function toggleLock() {
-    if (baseLocked) return;
-    baseLocked = true;
-    document.getElementById('lockBtn').innerText = "🔒 KİLİTLİ (30s)";
-    setTimeout(() => {
-        baseLocked = false;
-        document.getElementById('lockBtn').innerText = "Base'i Kilitle (30s)";
-    }, 30000);
-}
-
 // ====================== KONTROLLER ======================
 function onKeyDown(e) {
-    switch (e.code) {
-        case 'KeyW': move.forward = true; break;
-        case 'KeyS': move.backward = true; break;
-        case 'KeyA': move.left = true; break;
-        case 'KeyD': move.right = true; break;
-        case 'Space': swingBat(); break;
+    if (e.key === 'e' || e.key === 'E') {
+        toggleBaseLock();
+    }
+    if (e.key === ' ') {
+        swingBat();
     }
 }
 
-function onKeyUp(e) {
-    switch (e.code) {
-        case 'KeyW': move.forward = false; break;
-        case 'KeyS': move.backward = false; break;
-        case 'KeyA': move.left = false; break;
-        case 'KeyD': move.right = false; break;
-    }
+function toggleBaseLock() {
+    if (baseLocked) return;
+    baseLocked = true;
+    lockEndTime = Date.now() + 30000;
+    console.log("%cBase'in 30 saniyeliğine kilitlendi! Kimse giremez.", "color: lime");
+    setTimeout(() => baseLocked = false, 30000);
 }
 
 function swingBat() {
-    if (!bat) return;
-    bat.rotation.z = -2;
-    setTimeout(() => { if (bat) bat.rotation.z = 1.2; }, 180);
+    bat.rotation.z = -2.2;
+    setTimeout(() => bat.rotation.z = 1, 200);
 
-    // Yakındaki brainrot'ları kontrol et (çalma veya etkileme)
-    brainrots.forEach((br, i) => {
-        if (br.position.distanceTo(playerBody.position) < 6) {
+    brainrots.forEach((br, index) => {
+        if (player.position.distanceTo(br.position) < 7) {
             if (br.userData.owner !== "player") {
                 br.userData.owner = "player";
-                money += Math.floor(br.userData.value * 1.5);
+                money += br.userData.value;
+                ownedBrainrots++;
                 updateUI();
             }
         }
     });
 }
 
-// ====================== ANA DÖNGÜ ======================
+// ====================== ANA LOOP ======================
 function animate() {
     requestAnimationFrame(animate);
 
     if (controls.isLocked) {
-        const speed = 0.35;
+        const speed = 0.4;
+        if (keys['w'] || keys['W']) controls.moveForward(speed);
+        if (keys['s'] || keys['S']) controls.moveForward(-speed);
+        if (keys['a'] || keys['A']) controls.moveRight(-speed);
+        if (keys['d'] || keys['D']) controls.moveRight(speed);
 
-        direction.z = Number(move.forward) - Number(move.backward);
-        direction.x = Number(move.right) - Number(move.left);
-        direction.normalize();
-
-        if (move.forward || move.backward) velocity.z = direction.z * speed;
-        else velocity.z = 0;
-
-        if (move.left || move.right) velocity.x = direction.x * speed;
-        else velocity.x = 0;
-
-        controls.moveRight(velocity.x);
-        controls.moveForward(velocity.z);
-
-        // Oyuncu vücudunu kamera yönüne çevir (yaklaşık)
-        playerBody.position.copy(camera.position);
-        playerBody.position.y = 0;
-        playerBody.rotation.y = camera.rotation.y;
+        player.position.copy(controls.getObject().position);
+        player.position.y = 0;
     }
 
-    // AI basit hareket
-    aiBots.forEach(bot => {
-        if (Math.random() < 0.04 && brainrots.length > 0) {
-            bot.userData.target = brainrots[Math.floor(Math.random() * brainrots.length)];
-        }
+    // Brainrot'ların ilerlemesi (conveyor etkisi)
+    brainrots.forEach((br, i) => {
+        if (br.userData.owner === "neutral") {
+            br.position.z += br.userData.speed;
 
-        if (bot.userData.target) {
-            const dir = new THREE.Vector3().subVectors(bot.userData.target.position, bot.position).normalize();
-            bot.position.x += dir.x * bot.userData.speed;
-            bot.position.z += dir.z * bot.userData.speed;
+            // Oyuncuya yakınsa topla
+            if (player.position.distanceTo(br.position) < 5) {
+                br.userData.owner = "player";
+                money += br.userData.value;
+                ownedBrainrots++;
+                updateUI();
+                scene.remove(br);
+                brainrots.splice(i, 1);
+            }
+        }
+    });
+
+    // AI'ların davranışı (basit)
+    aiBots.forEach(bot => {
+        if (Math.random() < 0.03 && brainrots.length > 0) {
+            bot.userData.targetBrain = brainrots[Math.floor(Math.random()*brainrots.length)];
+        }
+        if (bot.userData.targetBrain) {
+            const dir = bot.userData.targetBrain.position.clone().sub(bot.position).normalize();
+            bot.position.add(dir.multiplyScalar(bot.userData.speed * 0.6));
         }
 
         // Çalma girişimi
-        if (!baseLocked && Math.random() < 0.025) {
+        if (!baseLocked && Math.random() < 0.02) {
             brainrots.forEach(br => {
-                if (br.userData.owner === "player" && bot.position.distanceTo(br.position) < 5) {
+                if (br.userData.owner === "player" && bot.position.distanceTo(br.position) < 6) {
                     br.userData.owner = "ai";
-                    money = Math.max(0, money - 70);
+                    money = Math.max(200, money - 80);
                     updateUI();
                 }
             });
         }
     });
 
-    // Pasif para kazanma
-    if (Math.random() < 0.04) {
-        const owned = brainrots.filter(b => b.userData.owner === "player").length;
-        money += owned * 5;
+    // Pasif gelir
+    if (Math.random() < 0.05) {
+        money += ownedBrainrots * 6;
         updateUI();
     }
 
     renderer.render(scene, camera);
 }
 
-function updateUI() {
-    document.getElementById('moneyAmount').textContent = Math.floor(money);
-    document.getElementById('brainCount').textContent = brainrots.filter(b => b.userData.owner === "player").length;
-}
+const keys = {};
+document.addEventListener('keydown', e => keys[e.key] = true);
+document.addEventListener('keyup', e => keys[e.key] = false);
 
-function onResize() {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
+function updateUI() {
+    document.getElementById('money').textContent = Math.floor(money);
+    document.getElementById('count').textContent = ownedBrainrots;
 }
 
 init();
 
-alert("✅ Oyun hazır!\n\nSol tıklayarak fareyi kilitle.\nWASD ile hareket et, SPACE ile vur.\nBrainrot'ları topla ve AI'lardan koru!");
+alert("🎮 Steal a Brainrot - 6 Base Modu\n\nSol tıkla fareyi kilitle\nWASD hareket\nSPACE vur\nE tuşu ile base'ini kilitle\n\nOrtadan geçen brainrot'ları topla, AI'ları izle!");
 </script>
 </body>
 </html>
